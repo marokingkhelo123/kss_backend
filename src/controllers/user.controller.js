@@ -524,7 +524,73 @@ const createBet = asyncHandler(async (req, res) => {
     throw new APIError(400, "Something went wrong in bet creation.");
   }
 
-  res.status(200).json(new APIResponse(200, uniqueString, "BET Created"));
+  // Populate bet with user and game data for receipt
+  const populatedBet = await Bet.findById(bet._id)
+    .populate("userId", "firstName lastName username _id")
+    .populate("gameId", "startTime duration endTime");
+
+  // Get game data
+  const game = await Game.findById(gameId);
+  
+  // Format order number: YYYYMMDD + sequence (using last 6 digits of bet _id converted to number)
+  const betDate = new Date(bet.createdAt);
+  const dateStr = betDate.toISOString().slice(0, 10).replace(/-/g, ""); // YYYYMMDD
+  const betIdStr = bet._id.toString();
+  // Convert last 6 hex characters to decimal and pad to 6 digits
+  const hexSequence = betIdStr.slice(-6);
+  const decimalSequence = parseInt(hexSequence, 16) % 1000000; // Ensure it's max 6 digits
+  const sequence = String(decimalSequence).padStart(6, "0"); // Pad to 6 digits
+  const orderNumber = `${dateStr}${sequence}`;
+
+  // Format KUID: KUID + last 5 digits of user _id
+  const userIdStr = user._id.toString();
+  const kuid = `KUID${userIdStr.slice(-5)}`;
+
+  // Calculate draw time: game startTime + duration
+  let drawTime = null;
+  if (game && game.startTime) {
+    const startTime = new Date(game.startTime);
+    const durationMinutes = game.duration || 5;
+    const drawDateTime = new Date(startTime.getTime() + durationMinutes * 60000);
+    drawTime = drawDateTime.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }
+
+  // Format date for receipt
+  const receiptDate = betDate.toLocaleDateString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  });
+
+  // Format print time
+  const printTime = new Date().toLocaleString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  // Prepare receipt data
+  const receiptData = {
+    uniqueString: bet.uniqueString,
+    betId: bet._id,
+    kuid: kuid,
+    orderNumber: orderNumber,
+    date: receiptDate,
+    drawTime: drawTime,
+    betAmounts: betAmounts,
+    totalBetPoints: bet.totalBetPoints,
+    printTime: printTime,
+    gameId: gameId,
+    userId: userId,
+  };
+
+  res.status(200).json(new APIResponse(200, receiptData, "BET Created"));
 });
 
 function generateRandomString(length) {
