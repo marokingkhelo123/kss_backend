@@ -957,6 +957,12 @@ const getProfitForBet = asyncHandler(async (req, res) => {
   let winning_x;
   const game = await Game.findById(bet.gameId);
   console.log("INSIDE GAME", game);
+  
+  // Check if game has finished (has winning_number)
+  if (!game.winning_number && game.distributorsWinners.length === 0) {
+    throw new APIError(400, "Game is still running. Please wait for the game to finish.");
+  }
+  
   if (game.distributorsWinners.length > 0) {
     let result = game.distributorsWinners.filter(
       (draw) => draw.distributorId == user.createdBy
@@ -987,8 +993,11 @@ const getProfitForBet = asyncHandler(async (req, res) => {
 
   if (profit > 0 && !bet.isScanned) {
     console.log("Creating Transaction");
-    let openingBalance = user.balance;
-    let closingBalance = user.balance + profit;
+    // Get the bet owner's current balance from database to ensure accuracy
+    const betOwner = await User.findById(bet.userId);
+    const betOwnerBalance = Number(betOwner.balance) || 0;
+    let openingBalance = betOwnerBalance;
+    let closingBalance = betOwnerBalance + profit;
     let transaction = await Transaction.create({
       gameId: game._id,
       userId: bet.userId,
@@ -1004,9 +1013,13 @@ const getProfitForBet = asyncHandler(async (req, res) => {
   bet.isScanned = true;
   await bet.save();
 
-  const updatedUser = await User.findById(user._id);
-  updatedUser.balance = updatedUser.balance + profit;
-  updatedUser.winning_amount = updatedUser.winning_amount + profit;
+  // Update the bet owner's balance (not the scanner's balance)
+  const updatedUser = await User.findById(bet.userId);
+  // Ensure balance and winning_amount are valid numbers (default to 0 if undefined/null)
+  const currentBalance = Number(updatedUser.balance) || 0;
+  const currentWinningAmount = Number(updatedUser.winning_amount) || 0;
+  updatedUser.balance = currentBalance + profit;
+  updatedUser.winning_amount = currentWinningAmount + profit;
   await updatedUser.save();
 
   return res.status(200).json(
