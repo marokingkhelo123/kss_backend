@@ -542,9 +542,8 @@ const createBet = asyncHandler(async (req, res) => {
   const sequence = String(decimalSequence).padStart(6, "0"); // Pad to 6 digits
   const orderNumber = `${dateStr}${sequence}`;
 
-  // Format KUID: KUID + last 5 digits of user _id
-  const userIdStr = user._id.toString();
-  const kuid = `KUID${userIdStr.slice(-5)}`;
+  // Format KUID: KUID + username
+  const kuid = `${user.username}`;
 
   // Calculate draw time: game startTime + duration
   let drawTime = null;
