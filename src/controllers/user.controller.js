@@ -189,6 +189,10 @@ const loginUser = asyncHandler(async (req, res) => {
     if (user.userType !== "Prime User") {
       throw new APIError(403, "Only Prime users can login to the playing screen.");
     }
+    // Check if user is active
+    if (!user.isUserActive) {
+      throw new APIError(403, "Your account is inactive. Please contact administrator.");
+    }
     // Check Password
 
     const isPasswordValid = await user.isPasswordCorrect(password);
@@ -269,7 +273,15 @@ const updateUserActive = asyncHandler(async (req, res) => {
     throw new APIError(400, "User Don't exist");
   }
 
-  user.isUserActive = !isUserActive;
+  // Store the new active state
+  const newActiveState = !isUserActive;
+  
+  // If user is being deactivated, clear their refreshToken to logout their session
+  if (!newActiveState && user.isUserActive) {
+    user.refreshToken = undefined;
+  }
+  
+  user.isUserActive = newActiveState;
   await user.save();
   let newuser = await User.findById(_id);
 
@@ -293,13 +305,18 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
       process.env.REFRESH_TOKEN_SECRET
     );
 
-    let user = await User.findById(decodedToken._id).select("refreshToken");
+    let user = await User.findById(decodedToken._id).select("refreshToken isUserActive");
 
     if (!user) {
       throw new APIError(401, "Invalid Refresh Token !!");
     }
 
-    if (incommingRefreshToken != user) {
+    // Check if user is active
+    if (!user.isUserActive) {
+      throw new APIError(403, "Your account is inactive. Please contact administrator.");
+    }
+
+    if (incommingRefreshToken != user.refreshToken) {
       throw new APIError(401, "Refresh token is expired");
     }
 
@@ -308,13 +325,13 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
       secure: true,
     };
 
-    const { accessToken, newRefreshToken } =
+    const { accessToken, refreshToken: newRefreshToken } =
       await generateAccessAndRefreshTokens(user._id);
 
     return res
       .status(200)
       .cookie("accessToken", accessToken, options)
-      .cookie("refreshToken", refreshToken, options)
+      .cookie("refreshToken", newRefreshToken, options)
       .json(
         new APIResponse(
           200,

@@ -150,6 +150,10 @@ const loginAdmin = asyncHandler(async (req, res) => {
       if (admin.userType !== "Distributor") {
         throw new APIError(403, "Only Admin and Distributor users can login to the admin panel.");
       }
+      // Check if user is active
+      if (!admin.isUserActive) {
+        throw new APIError(403, "Your account is inactive. Please contact administrator.");
+      }
       const isPasswordValid = await admin.isPasswordCorrect(password);
       if (!isPasswordValid) {
         throw new APIError(400, "Wrong Password !!");
