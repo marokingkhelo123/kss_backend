@@ -6,6 +6,7 @@ import { APIError } from "../utils/APIError.js";
 import { APIResponse } from "../utils/APIResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { User } from "./../models/user.model.js";
+import { Admin } from "../models/admin.model.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 
@@ -37,16 +38,19 @@ const generateAccessAndRefreshTokens = async (userId) => {
 
 const registerUser = asyncHandler(async (req, res) => {
   try {
+    // Get creator from middleware (req.user)
+    const creator = req.user;
+    if (!creator) {
+      throw new APIError(401, "Unauthorized - Creator information not found.");
+    }
+
     // Get Data from REQ BODY
     const {
-      creatorId,
       firstName,
       lastName,
       location,
-      userType,
+      userType: requestedUserType,
       isUserActive,
-      balance,
-      winning_amount,
       username,
       password,
       mobileNo,
@@ -59,17 +63,34 @@ const registerUser = asyncHandler(async (req, res) => {
         firstName,
         lastName,
         location,
-        userType,
-        balance,
-        winning_amount,
         username,
         password,
         mobileNo,
       ].some((field) => field?.trim() === "")
     ) {
-      throw new APIError(400, "All fields are required to create user.");
+      throw new APIError(400, "All required fields must be provided.");
     }
 
+    // Determine the actual userType based on creator's role
+    let finalUserType;
+    const creatorType = creator.userType;
+
+    if (creatorType === "admin") {
+      // Admin can create both Distributor and Prime User
+      // Use the requested userType, but validate it
+      if (requestedUserType && (requestedUserType === "Distributor" || requestedUserType === "Prime User")) {
+        finalUserType = requestedUserType;
+      } else {
+        throw new APIError(400, "Admin can only create Distributor or Prime User. Invalid userType provided.");
+      }
+    } else if (creatorType === "Distributor") {
+      // Distributor can only create Prime User - force it regardless of what was sent
+      finalUserType = "Prime User";
+    } else {
+      throw new APIError(403, "You don't have permission to create users.");
+    }
+
+    // Check if username already exists
     const existedUser = await User.findOne({
       $or: [{ username }],
     });
@@ -78,23 +99,31 @@ const registerUser = asyncHandler(async (req, res) => {
       throw new APIError(400, "User Already Exists.");
     }
 
+    // Get creator ID (could be Admin._id or User._id)
+    const creatorId = creator._id;
+
+    // Set default values for new user
+    const defaultBalance = 0;
+    const defaultDepositedAmount = 0;
+    const defaultWinningAmount = 0;
+    const defaultIsUserActive = isUserActive !== undefined ? isUserActive : true;
+    const defaultAllowSelectWinner = allowSelectWinner !== undefined ? allowSelectWinner : (finalUserType === "Distributor" ? true : false);
+
     // Add Data to MongoDB
     const user = await User.create({
       firstName,
       lastName,
       location,
-      userType,
-      isUserActive,
-      balance,
-      winning_amount,
+      userType: finalUserType,
+      isUserActive: defaultIsUserActive,
+      balance: defaultBalance,
+      depositedAmount: defaultDepositedAmount,
+      winning_amount: defaultWinningAmount,
       username,
       password,
-      balance: 0,
-      depositedAmount: 0,
-      winning_amount: 0,
       mobileNo,
       createdBy: creatorId,
-      allowSelectWinner,
+      allowSelectWinner: defaultAllowSelectWinner,
     });
 
     // Removed Password and RefreshToken From USER
@@ -112,7 +141,7 @@ const registerUser = asyncHandler(async (req, res) => {
         new APIResponse(201, createdUser, "User Registered Sucessfully !!")
       );
   } catch (error) {
-    throw new APIError(400, error);
+    throw new APIError(400, error?.message || error);
   }
 });
 
@@ -749,15 +778,34 @@ const withDrawUserBalance = asyncHandler(async (req, res) => {
 
 const depositUserBalance = asyncHandler(async (req, res) => {
   const { receiverId, senderId, balance } = req.body;
-  if (!receiverId && !senderId && !balance) {
-    throw new APIError(400, "USERID & Balance are required.");
+  if (!receiverId || !balance) {
+    throw new APIError(400, "Receiver ID and Balance are required.");
   }
 
   const receiver = await User.findById(receiverId);
-  const sender = await User.findById(senderId);
   if (!receiver) {
-    throw new APIError(400, "Users Not Found");
+    throw new APIError(400, "Receiver user not found.");
   }
+
+  // Check if sender is Admin or Distributor
+  let sender = null;
+  let isAdmin = false;
+  
+  if (senderId) {
+    // Try to find sender in Admin model first
+    sender = await Admin.findById(senderId);
+    if (sender && sender.userType === "admin") {
+      isAdmin = true;
+    } else {
+      // If not Admin, try User model (could be Distributor)
+      sender = await User.findById(senderId);
+      if (!sender) {
+        throw new APIError(400, "Sender not found.");
+      }
+    }
+  }
+
+  // Update receiver balance
   let receiveropeningBalance = receiver.balance;
   const updatedUser = await User.findByIdAndUpdate(
     receiverId,
@@ -772,13 +820,15 @@ const depositUserBalance = asyncHandler(async (req, res) => {
   );
 
   if (!updatedUser) {
-    throw new APIError(400, "Something went wrong while money deposit.");
+    throw new APIError(400, "Something went wrong while updating receiver balance.");
   }
   let receiverclosingBalance = updatedUser.balance;
+
+  // Create transaction for receiver
   const transaction = await Transaction.create({
     amount: balance,
     gameId: null,
-    source: "Deposit balance",
+    source: isAdmin ? "Admin Deposit" : "Deposit balance",
     type: "Add Balance",
     userId: receiverId,
     openingBalance: receiveropeningBalance,
@@ -787,9 +837,14 @@ const depositUserBalance = asyncHandler(async (req, res) => {
     totalBetPoints: 0,
   });
 
-  if (sender?.userType == "Distributor") {
+  if (!transaction) {
+    throw new APIError(400, "Something went wrong while creating transaction");
+  }
+
+  // If sender is Distributor (not Admin), deduct from their balance
+  if (sender && sender.userType === "Distributor" && !isAdmin) {
     let senderopeningBalance = sender.balance;
-    const updatedUser2 = await User.findByIdAndUpdate(
+    const updatedSender = await User.findByIdAndUpdate(
       senderId,
       {
         $set: {
@@ -801,13 +856,13 @@ const depositUserBalance = asyncHandler(async (req, res) => {
       }
     );
 
-    if (!updatedUser2) {
-      throw new APIError(400, "Something went wrong while money deposit.");
+    if (!updatedSender) {
+      throw new APIError(400, "Something went wrong while updating sender balance.");
     }
-    let senderclosingBalance = updatedUser2.balance;
+    let senderclosingBalance = updatedSender.balance;
 
-    // SENDER TRANSACTION
-    const transaction2 = await Transaction.create({
+    // Create transaction for sender (Distributor)
+    const senderTransaction = await Transaction.create({
       amount: balance,
       gameId: null,
       source: "Transfer balance",
@@ -818,10 +873,12 @@ const depositUserBalance = asyncHandler(async (req, res) => {
       isProfit: false,
       totalBetPoints: 0,
     });
+
+    if (!senderTransaction) {
+      throw new APIError(400, "Something went wrong while creating sender transaction");
+    }
   }
-  if (!transaction) {
-    throw new APIError(400, "Something went wrong while creating transaction");
-  }
+  // If Admin, no balance deduction needed (Admin can give points freely)
 
   res
     .status(200)

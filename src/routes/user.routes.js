@@ -23,7 +23,7 @@ import {
   updateWinner,
   withDrawUserBalance,
 } from "../controllers/user.controller.js";
-import { verifyJWT } from "../middlewares/auth.middleware.js";
+import { verifyJWT, verifyJWTForRegistration } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
@@ -41,7 +41,7 @@ router.route("/withDrawUserBalance").post(withDrawUserBalance);
 
 // Admin Panel Routes
 
-router.route("/register").post(registerUser);
+router.route("/register").post(verifyJWTForRegistration, registerUser);
 router.route("/updateWinner").post(updateWinner);
 router.route("/update-password").post(changeUserPassword);
 router.route("/getAllUsers").get(getAllUser);
