@@ -9,6 +9,7 @@ import { User } from "./../models/user.model.js";
 import { Admin } from "../models/admin.model.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
+import { emitForceLogout } from "../realtime/socket.js";
 
 const generateAccessAndRefreshTokens = async (userId) => {
   try {
@@ -280,6 +281,8 @@ const updateUserActive = asyncHandler(async (req, res) => {
   if (!newActiveState && user.isUserActive) {
     // Clear refreshToken to invalidate all active sessions
     user.refreshToken = null;
+    // Fire realtime logout to connected clients
+    emitForceLogout(_id);
   }
   
   user.isUserActive = newActiveState;
@@ -1139,11 +1142,28 @@ const getDailyUserTransactions = asyncHandler(async (req, res) => {
 const updateUser = asyncHandler(async (req, res) => {
   const { userId, data } = req.body;
   let user = await User.findById(userId);
+  if (!user) {
+    throw new APIError(404, "User not found.");
+  }
+
+  // Determine if user will become inactive (for forced logout)
+  const incomingIsActive =
+    typeof data.isUserActive === "boolean" ? data.isUserActive : user.isUserActive;
+  const becameInactive = user.isUserActive && incomingIsActive === false;
+
+  // Preserve refreshToken unless user is being deactivated
+  const nextRefreshToken = becameInactive ? null : user.refreshToken;
+
   let newUser = {
     ...user._doc,
     ...data,
-    password: data.password.length > 0 ? data.password : user._doc.password
-  }
+    password:
+      data?.password && data.password.length > 0
+        ? data.password
+        : user._doc.password,
+    isUserActive: incomingIsActive,
+    refreshToken: nextRefreshToken,
+  };
 
   // Find the user by ID and update only the provided fields
   const updatedUser = await User.findByIdAndUpdate(userId, {$set:newUser}, {
@@ -1153,6 +1173,11 @@ const updateUser = asyncHandler(async (req, res) => {
 
   if (!updatedUser) {
     throw new APIError(404, "User not found.");
+  }
+
+  // Fire realtime logout if user was deactivated
+  if (becameInactive) {
+    emitForceLogout(userId);
   }
 
   // Return Response
