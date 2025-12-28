@@ -276,9 +276,10 @@ const updateUserActive = asyncHandler(async (req, res) => {
   // Store the new active state
   const newActiveState = !isUserActive;
   
-  // If user is being deactivated, clear their refreshToken to logout their session
+  // If user is being deactivated, clear their refreshToken to logout their session immediately
   if (!newActiveState && user.isUserActive) {
-    user.refreshToken = undefined;
+    // Clear refreshToken to invalidate all active sessions
+    user.refreshToken = null;
   }
   
   user.isUserActive = newActiveState;
