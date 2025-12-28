@@ -142,6 +142,14 @@ const loginAdmin = asyncHandler(async (req, res) => {
       if (!admin) {
         throw new APIError(400, "User don't exist.");
       }
+      // Prevent Prime users from logging into admin panel
+      if (admin.userType === "Prime User") {
+        throw new APIError(403, "Prime users are not allowed to login to the admin panel.");
+      }
+      // Only allow Distributor to login
+      if (admin.userType !== "Distributor") {
+        throw new APIError(403, "Only Admin and Distributor users can login to the admin panel.");
+      }
       const isPasswordValid = await admin.isPasswordCorrect(password);
       if (!isPasswordValid) {
         throw new APIError(400, "Wrong Password !!");

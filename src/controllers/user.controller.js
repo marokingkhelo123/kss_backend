@@ -152,6 +152,14 @@ const loginUser = asyncHandler(async (req, res) => {
     if (!user) {
       throw new APIError(400, "User don't exist.");
     }
+    // Prevent Distributor from logging into playing screen
+    if (user.userType === "Distributor") {
+      throw new APIError(403, "Distributors are not allowed to login to the playing screen.");
+    }
+    // Only allow Prime User to login
+    if (user.userType !== "Prime User") {
+      throw new APIError(403, "Only Prime users can login to the playing screen.");
+    }
     // Check Password
 
     const isPasswordValid = await user.isPasswordCorrect(password);
