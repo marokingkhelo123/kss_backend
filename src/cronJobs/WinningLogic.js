@@ -105,16 +105,6 @@ const calculationOfNewWinner = async (gameId) => {
         total_winning,
       };
       totalPlayUsersArray.push(object);
-      // CREATE TRANSACTIONS FOR ALL LOSS ( ALL BETPOINTS )
-      await Transaction.create({
-        gameId,
-        userId: user,
-        date: Date.now,
-        isProfit: false,
-        amount: totalBetPoints,
-        totalBetPoints: totalBetPoints,
-        total_winning: 0,
-      });
     });
 
     await Promise.all(promises);

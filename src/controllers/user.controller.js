@@ -545,6 +545,7 @@ const createBet = asyncHandler(async (req, res) => {
     userId: userId,
     isProfit: false,
     totalBetPoints: totalBetAmount,
+    uniqueString: uniqueString || null,
   });
 
   if (!transaction) {
@@ -1093,6 +1094,7 @@ const getProfitForBet = asyncHandler(async (req, res) => {
       openingBalance,
       closingBalance,
       totalBetPoints: 0,
+      uniqueString: bet.uniqueString || null,
     });
   }
   bet.isScanned = true;

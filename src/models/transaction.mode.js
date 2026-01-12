@@ -26,6 +26,9 @@ const transactionSchema = new Schema(
     total_winning: {
       type: String,
     },
+    uniqueString: {
+      type: String, // barcode / ticket identifier
+    },
     openingBalance: {
       type: Number,
     },
