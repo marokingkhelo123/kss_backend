@@ -1186,6 +1186,97 @@ const updateUser = asyncHandler(async (req, res) => {
   return res.status(200).json(new APIResponse(200, {}, "User Updated"));
 });
 
+const getDailyReport = asyncHandler(async (req, res) => {
+  const { userId } = req.body;
+  if (!userId) {
+    throw new APIError(400, "UserId is required");
+  }
+
+  // Get user
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new APIError(400, "User not found");
+  }
+
+  // Get today's date range
+  const now = new Date();
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  const endOfToday = new Date(now);
+  endOfToday.setHours(23, 59, 59, 999);
+
+  // Get all transactions for today
+  const transactions = await Transaction.find({
+    userId: userId,
+    createdAt: {
+      $gte: startOfToday,
+      $lte: endOfToday,
+    },
+  }).sort({ createdAt: 1 }); // Sort by creation time ascending
+
+  // Calculate opening balance
+  // If there are no transactions today, opening balance = closing balance (current balance)
+  // Otherwise, get the openingBalance from the first transaction of the day
+  let openingBalance = user.balance;
+  if (transactions.length > 0) {
+    // Find the first transaction with an openingBalance (usually the first bet transaction)
+    const firstTransactionWithOpeningBalance = transactions.find(
+      (t) => t.openingBalance !== undefined && t.openingBalance !== null
+    );
+    if (firstTransactionWithOpeningBalance) {
+      openingBalance = firstTransactionWithOpeningBalance.openingBalance;
+    } else {
+      // If no transaction has openingBalance, we need to calculate it
+      // by working backwards from the first transaction's closingBalance
+      // For now, use current balance as fallback
+      openingBalance = user.balance;
+    }
+  }
+
+  // Calculate totals
+  let totalDrawPoints = 0; // Total bet points (draw points)
+  let totalWinningPoints = 0; // Total winning points
+  let totalProfitPoints = 0; // Profit = Draw points - Winning points
+
+  transactions.forEach((transaction) => {
+    // Only count gaming transactions
+    if (transaction.type === "Gaming") {
+      if (!transaction.isProfit) {
+        // This is a bet/draw transaction
+        totalDrawPoints += transaction.totalBetPoints || 0;
+      } else {
+        // This is a winning transaction
+        totalWinningPoints += transaction.amount || 0;
+      }
+    }
+  });
+
+  // Calculate profit points (draw points - winning points)
+  totalProfitPoints = totalDrawPoints - totalWinningPoints;
+
+  // Closing balance is current user balance
+  const closingBalance = user.balance;
+
+  // Format date
+  const reportDate = new Date().toLocaleDateString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  });
+
+  const dailyReport = {
+    username: user.username,
+    date: reportDate,
+    openingBalance: openingBalance || 0,
+    totalDrawPoints: totalDrawPoints || 0,
+    totalWinningPoints: totalWinningPoints || 0,
+    totalProfitPoints: totalProfitPoints || 0,
+    closingBalance: closingBalance || 0,
+  };
+
+  res.status(200).json(new APIResponse(200, dailyReport, "Daily Report"));
+});
+
 
 
 
@@ -1215,5 +1306,6 @@ export {
   getDailyUserTransactions,
   updateDistributorActive,
   loginUserWithToken,
-  updateUser
+  updateUser,
+  getDailyReport
 };

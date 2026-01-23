@@ -6,6 +6,7 @@ import {
   deleteUser,
   depositUserBalance,
   getAllUser,
+  getDailyReport,
   getDailyUserTransactions,
   getLatestGames,
   getLiveGame,
@@ -56,5 +57,6 @@ router.route("/update-user-balance").post(updateUserBalance);
 router.route("/get-user-info").post(getUserInformation);
 router.route("/getDailyTransactions").post(getDailyUserTransactions);
 router.route("/getBetProfit").post(getProfitForBet);
+router.route("/getDailyReport").post(getDailyReport);
 
 export default router;
