@@ -1219,12 +1219,23 @@ const getDailyReport = asyncHandler(async (req, res) => {
   // Otherwise, get the openingBalance from the first transaction of the day
   let openingBalance = user.balance;
   if (transactions.length > 0) {
+    const firstTransaction = transactions[0];
+    const userCreatedToday = user.createdAt >= startOfToday;
     // Find the first transaction with an openingBalance (usually the first bet transaction)
     const firstTransactionWithOpeningBalance = transactions.find(
       (t) => t.openingBalance !== undefined && t.openingBalance !== null
     );
     if (firstTransactionWithOpeningBalance) {
       openingBalance = firstTransactionWithOpeningBalance.openingBalance;
+      // For brand new users, show the first credited balance as opening
+      if (
+        userCreatedToday &&
+        openingBalance === 0 &&
+        firstTransaction.type === "Add Balance" &&
+        typeof firstTransaction.closingBalance === "number"
+      ) {
+        openingBalance = firstTransaction.closingBalance;
+      }
     } else {
       // If no transaction has openingBalance, we need to calculate it
       // by working backwards from the first transaction's closingBalance
