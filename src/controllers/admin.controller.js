@@ -196,12 +196,11 @@ const loginAdmin = asyncHandler(async (req, res) => {
 });
 
 const getTransactions = asyncHandler(async (req, res) => {
-  const { userId, fromDate, toDate, page } = req.body; // Assuming these are query parameters
-  let limit = 20;
-  // const fromDateObj = `${fromDate}T00:00:00.000+05:30`;
-  // const toDateObj = `${toDate}T23:59:59.999+05:30`;
+  const { userId, fromDate, toDate, page } = req.body;
+  const limit = 20;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const skip = (pageNum - 1) * limit;
 
-  // let dates = convertISTtoUTC(fromDateObj, toDateObj);
   let query;
   if (userId == "all") {
     query = {
@@ -217,47 +216,43 @@ const getTransactions = asyncHandler(async (req, res) => {
   const total = await Transaction.countDocuments(query);
   const transactions = await Transaction.find(query)
     .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .lean()
     .exec();
 
-  const groupedTransactions = {};
+  let record;
 
-  const processTransactions = async () => {
+  if (userId == "all") {
+    const groupedTransactions = {};
+    const uniqueUserIds = [...new Set(transactions.map((t) => t.userId?.toString()).filter(Boolean))];
+    const users = uniqueUserIds.length
+      ? await User.find({ _id: { $in: uniqueUserIds } }).select("username").lean().exec()
+      : [];
+    const userMap = new Map(users.map((u) => [u._id.toString(), u]));
+
     for (const transaction of transactions) {
-      const { userId, createdAt, ...rest } = transaction;
-      const dateKey = createdAt.toISOString().slice(0, 10); // Extract date part from createdAt
-
-      // Fetch the user details asynchronously
-      const user = await User.findById(userId);
-      if (user) {
-        // If the dateKey doesn't exist in the groupedTransactions, create it
-        if (!groupedTransactions[dateKey]) {
-          groupedTransactions[dateKey] = {};
-        }
-
-        // If the userId doesn't exist for the dateKey, create it
-        if (!groupedTransactions[dateKey][user.username]) {
-          groupedTransactions[dateKey][user.username] = [];
-        }
-
-        // Push the transaction object to the corresponding userId array for the date
-        groupedTransactions[dateKey][user.username].push({
-          ...rest._doc,
-          // username: user.username,
-        });
+      const { userId: txUserId, createdAt, ...rest } = transaction;
+      const dateKey = createdAt ? new Date(createdAt).toISOString().slice(0, 10) : "";
+      const user = txUserId ? userMap.get(txUserId.toString()) : null;
+      if (user?.username) {
+        if (!groupedTransactions[dateKey]) groupedTransactions[dateKey] = {};
+        if (!groupedTransactions[dateKey][user.username]) groupedTransactions[dateKey][user.username] = [];
+        groupedTransactions[dateKey][user.username].push(rest);
       }
     }
-  };
+    record = groupedTransactions;
+  } else {
+    record = transactions;
+  }
 
-  await processTransactions();
-
-  let record = userId == "all" ? groupedTransactions : transactions;
   const totalPages = Math.ceil(total / limit);
   return res
     .status(200)
     .json(
       new APIResponse(
         200,
-        { transactions: record, totalPages, currentPage: page },
+        { transactions: record, totalPages, currentPage: pageNum },
         "Transactions"
       )
     );

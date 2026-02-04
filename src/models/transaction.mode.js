@@ -44,6 +44,11 @@ const transactionSchema = new Schema(
   }
 );
 
+// Index for fast user transaction list: find by userId, sort by createdAt
+transactionSchema.index({ userId: 1, createdAt: -1 });
+// Index for admin date-range queries (all users or single user)
+transactionSchema.index({ createdAt: -1 });
+
 transactionSchema.pre("save", async function (next) {
   if (!this.userId) {
     throw new APIError(400, "UserID is required");
