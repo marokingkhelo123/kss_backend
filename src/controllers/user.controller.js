@@ -1065,19 +1065,25 @@ const getProfitForBet = asyncHandler(async (req, res) => {
     winning_x = game.winning_x;
   }
   let profit = bet.betAmounts[winning_number] * winning_x * 11;
-  if (bet.isScanned) {
-    return res
-      .status(200)
-      .json(
-        new APIResponse(
-          200,
-          { isScanned: true, isProfit: profit > 0 ? true : false, profit: 0 },
-          "Already Scanned"
-        )
-      );
+
+  // Atomically mark the bet as scanned to prevent duplicate payouts
+  const scannedBet = await Bet.findOneAndUpdate(
+    { _id: bet._id, isScanned: false },
+    { $set: { isScanned: true } },
+    { new: true }
+  );
+
+  if (!scannedBet) {
+    return res.status(200).json(
+      new APIResponse(
+        200,
+        { isScanned: true, isProfit: profit > 0 ? true : false, profit: 0 },
+        "Already Scanned"
+      )
+    );
   }
 
-  if (profit > 0 && !bet.isScanned) {
+  if (profit > 0) {
     console.log("Creating Transaction");
     // Get the bet owner's current balance from database to ensure accuracy
     const betOwner = await User.findById(bet.userId);
@@ -1097,9 +1103,6 @@ const getProfitForBet = asyncHandler(async (req, res) => {
       uniqueString: bet.uniqueString || null,
     });
   }
-  bet.isScanned = true;
-  await bet.save();
-
   // Update the bet owner's balance (not the scanner's balance)
   const updatedUser = await User.findById(bet.userId);
   // Ensure balance and winning_amount are valid numbers (default to 0 if undefined/null)
