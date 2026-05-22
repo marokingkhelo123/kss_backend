@@ -6,7 +6,8 @@
   "main": "./src/index.js",
   "scripts": {
     "dev": "nodemon -r dotenv/config --experimental-json-modules src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "update-admin-password": "node -r dotenv/config scripts/update-admin-password.js"
   },
   "author": "",
   "license": "ISC",
