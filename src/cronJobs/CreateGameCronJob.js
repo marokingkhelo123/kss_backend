@@ -3,6 +3,7 @@ import { Game } from "../models/game.mode.js";
 import { LiveGame } from "../models/liveGame.mode.js";
 import { findAutomaticWinner } from "./WinningLogic.js";
 import { GamePercentage } from "../models/gamepercentage.model.js";
+import { GAME_DURATION_MINUTES } from "../constants.js";
 
 async function createGame() {
   try {
@@ -10,7 +11,7 @@ async function createGame() {
     const gamepercentage = await GamePercentage.find();
     console.log(gamepercentage);
     const game = await Game.create({
-      duration: 2,
+      duration: GAME_DURATION_MINUTES,
       totalBets: [],
       orderPoints: 0,
       totalUsersPlayed: [],
@@ -69,7 +70,25 @@ async function generateWinnerCheck() {
   }
 }
 
+async function syncLiveGameDuration() {
+  try {
+    const liveGame = await LiveGame.findOne();
+    if (liveGame?.gameId) {
+      await Game.findByIdAndUpdate(liveGame.gameId, {
+        duration: GAME_DURATION_MINUTES,
+      });
+      console.log(
+        `Synced live game duration to ${GAME_DURATION_MINUTES} minutes`
+      );
+    }
+  } catch (error) {
+    console.log("Failed to sync live game duration:", error);
+  }
+}
+
 export async function startCronJobs() {
+  await syncLiveGameDuration();
+
   const createGameJob = "*/2 * * * *";
   cron.schedule(createGameJob, createGame);
 

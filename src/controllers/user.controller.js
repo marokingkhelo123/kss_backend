@@ -10,6 +10,7 @@ import { Admin } from "../models/admin.model.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import { emitForceLogout } from "../realtime/socket.js";
+import { GAME_DURATION_MINUTES } from "../constants.js";
 
 const generateAccessAndRefreshTokens = async (userId) => {
   try {
@@ -464,7 +465,7 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
 // Generate a Game
 const createNewGame = asyncHandler(async (req, res) => {
   const game = await Game.create({
-    duration: 2,
+    duration: GAME_DURATION_MINUTES,
     totalBets: [],
     orderPoints: 0,
     max_amount_to_return: 0,
@@ -608,7 +609,7 @@ const createBet = asyncHandler(async (req, res) => {
   let drawTime = null;
   if (game && game.startTime) {
     const startTime = new Date(game.startTime);
-    const durationMinutes = game.duration || 2;
+    const durationMinutes = GAME_DURATION_MINUTES;
     const drawDateTime = new Date(startTime.getTime() + durationMinutes * 60000);
     drawTime = drawDateTime.toLocaleTimeString("en-US", {
       hour: "numeric",
@@ -670,8 +671,10 @@ const getLiveGame = asyncHandler(async (req, res) => {
   }
 
   const game = await Game.findById(liveGame[0].gameId);
+  const gameData = game.toObject();
+  gameData.duration = GAME_DURATION_MINUTES;
 
-  res.status(200).json(new APIResponse(200, game, "Live Game Found"));
+  res.status(200).json(new APIResponse(200, gameData, "Live Game Found"));
 });
 
 const getLatestGames = asyncHandler(async (req, res) => {
