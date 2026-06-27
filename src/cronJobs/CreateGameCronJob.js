@@ -10,7 +10,7 @@ async function createGame() {
     const gamepercentage = await GamePercentage.find();
     console.log(gamepercentage);
     const game = await Game.create({
-      duration: 5,
+      duration: 2,
       totalBets: [],
       orderPoints: 0,
       totalUsersPlayed: [],
@@ -62,7 +62,7 @@ async function generateWinnerCheck() {
   const now = new Date();
   const minutes = now.getMinutes();
 
-  if (minutes % 5 === 4) {
+  if (minutes % 2 === 1) {
     // FINDING WINNER
     console.log("GENERATING WINNERS :- ");
     findAutomaticWinner();
@@ -70,7 +70,7 @@ async function generateWinnerCheck() {
 }
 
 export async function startCronJobs() {
-  const createGameJob = "*/5 * * * *";
+  const createGameJob = "*/2 * * * *";
   cron.schedule(createGameJob, createGame);
 
   const checkWinnerJob = "50/50 * * * * *";

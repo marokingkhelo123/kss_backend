@@ -464,7 +464,7 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
 // Generate a Game
 const createNewGame = asyncHandler(async (req, res) => {
   const game = await Game.create({
-    duration: 5,
+    duration: 2,
     totalBets: [],
     orderPoints: 0,
     max_amount_to_return: 0,
@@ -608,7 +608,7 @@ const createBet = asyncHandler(async (req, res) => {
   let drawTime = null;
   if (game && game.startTime) {
     const startTime = new Date(game.startTime);
-    const durationMinutes = game.duration || 5;
+    const durationMinutes = game.duration || 2;
     const drawDateTime = new Date(startTime.getTime() + durationMinutes * 60000);
     drawTime = drawDateTime.toLocaleTimeString("en-US", {
       hour: "numeric",
