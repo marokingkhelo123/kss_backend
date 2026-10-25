@@ -3,16 +3,43 @@ import { Game } from "../models/game.mode.js";
 import { LiveGame } from "../models/liveGame.mode.js";
 import { findAutomaticWinner } from "./WinningLogic.js";
 import { GamePercentage } from "../models/gamepercentage.model.js";
-import { getGameDurationMinutes } from "../constants.js";
+import {
+  getCurrentSlot,
+  getGameDurationMinutes,
+  getGameEndTime,
+} from "../constants.js";
+
+let winnerTriggeredForGameId = null;
+
+function roundEndTime(game) {
+  if (!game?.startTime) return null;
+  return getGameEndTime(game.startTime);
+}
+
+async function roundStillRunning(game) {
+  const endTime = roundEndTime(game);
+  return Boolean(endTime && endTime.getTime() > Date.now() + 2000);
+}
 
 async function createGame() {
   try {
+    const liveGame = await LiveGame.findOne();
+    if (liveGame?.gameId) {
+      const current = await Game.findById(liveGame.gameId).select(
+        "startTime endTime"
+      );
+      if (await roundStillRunning(current)) {
+        console.log("Current round still running. Skip creating a new game.");
+        return;
+      }
+    }
+
     console.log("Creating New Game");
     const gamepercentage = await GamePercentage.find();
     console.log(gamepercentage);
-    const gameDurationMinutes = getGameDurationMinutes();
+    const slot = getCurrentSlot();
     const game = await Game.create({
-      duration: gameDurationMinutes,
+      duration: slot.duration,
       totalBets: [],
       orderPoints: 0,
       totalUsersPlayed: [],
@@ -32,8 +59,8 @@ async function createGame() {
         eleven: 0,
         twelve: 0,
       },
-      startTime: Date.now(),
-      endTime: null,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
     });
 
     console.log("New Game Created :- ", game);
@@ -61,42 +88,71 @@ async function createGame() {
 }
 
 async function generateWinnerCheck() {
-  const now = new Date();
-  const minutes = now.getMinutes();
+  try {
+    const liveGame = await LiveGame.findOne();
+    if (!liveGame?.gameId) return;
 
-  if ((minutes + 1) % getGameDurationMinutes() === 0) {
-    // FINDING WINNER
-    console.log("GENERATING WINNERS :- ");
-    findAutomaticWinner();
+    const game = await Game.findById(liveGame.gameId).select(
+      "startTime endTime winning_x"
+    );
+    if (!game?.startTime || game.winning_x != null) return;
+
+    const gameId = String(game._id);
+    if (winnerTriggeredForGameId === gameId) return;
+
+    const endTime = roundEndTime(game);
+    const remaining = endTime.getTime() - Date.now();
+    if (remaining <= 10000 && remaining > -60000) {
+      winnerTriggeredForGameId = gameId;
+      console.log("GENERATING WINNERS :- ");
+      await findAutomaticWinner();
+      const updated = await Game.findById(gameId).select("winning_x");
+      if (updated && updated.winning_x == null) {
+        winnerTriggeredForGameId = null;
+      }
+    }
+  } catch (error) {
+    console.log("Failed to check winner window:", error);
   }
 }
 
-async function syncLiveGameDuration() {
+async function ensureLiveRound() {
   try {
+    const slot = getCurrentSlot();
     const liveGame = await LiveGame.findOne();
-    if (liveGame?.gameId) {
-      const gameDurationMinutes = getGameDurationMinutes();
-      await Game.findByIdAndUpdate(liveGame.gameId, {
-        duration: gameDurationMinutes,
+    const game = liveGame?.gameId
+      ? await Game.findById(liveGame.gameId).select("startTime")
+      : null;
+    const endTime = roundEndTime(game);
+
+    if (endTime && endTime.getTime() === slot.endTime.getTime() && endTime.getTime() > Date.now()) {
+      await Game.findByIdAndUpdate(game._id, {
+        duration: slot.duration,
+        endTime: slot.endTime,
       });
       console.log(
-        `Synced live game duration to ${gameDurationMinutes} minutes`
+        `Synced live game to ${slot.duration} minutes, ends at ${slot.endTime.toISOString()}`
       );
+      return;
     }
+
+    await createGame();
   } catch (error) {
     console.log("Failed to sync live game duration:", error);
   }
 }
 
 export async function startCronJobs() {
-  await syncLiveGameDuration();
+  const slot = getCurrentSlot();
+  console.log(
+    `Game duration ${slot.duration} minutes. Current round ends at ${slot.endTime.toISOString()}`
+  );
+  await ensureLiveRound();
 
-  const gameDurationMinutes = getGameDurationMinutes();
-  const createGameJob = `*/${gameDurationMinutes} * * * *`;
+  const createGameJob = `*/${getGameDurationMinutes()} * * * *`;
   cron.schedule(createGameJob, createGame);
 
-  const checkWinnerJob = "50/50 * * * * *";
-  cron.schedule(checkWinnerJob, generateWinnerCheck);
+  cron.schedule("*/10 * * * * *", generateWinnerCheck);
 
   console.log("Cron jobs started");
 }

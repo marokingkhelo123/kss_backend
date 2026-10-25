@@ -10,7 +10,7 @@ import { Admin } from "../models/admin.model.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import { emitForceLogout } from "../realtime/socket.js";
-import { getGameDurationMinutes } from "../constants.js";
+import { attachGameClock, getGameEndTime } from "../constants.js";
 
 const generateAccessAndRefreshTokens = async (userId) => {
   try {
@@ -464,8 +464,9 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
 
 // Generate a Game
 const createNewGame = asyncHandler(async (req, res) => {
+  const startTime = new Date();
   const game = await Game.create({
-    duration: getGameDurationMinutes(),
+    duration: attachGameClock({ startTime }).duration,
     totalBets: [],
     orderPoints: 0,
     max_amount_to_return: 0,
@@ -484,8 +485,8 @@ const createNewGame = asyncHandler(async (req, res) => {
       eleven: 0,
       twelve: 0,
     },
-    startTime: Date.now(),
-    endTime: null,
+    startTime,
+    endTime: getGameEndTime(startTime),
   });
   if (!game) {
     throw new APIError(400, "Something went wrong in game creation.");
@@ -608,9 +609,7 @@ const createBet = asyncHandler(async (req, res) => {
   // Calculate draw time: game startTime + duration
   let drawTime = null;
   if (game && game.startTime) {
-    const startTime = new Date(game.startTime);
-    const durationMinutes = getGameDurationMinutes();
-    const drawDateTime = new Date(startTime.getTime() + durationMinutes * 60000);
+    const drawDateTime = getGameEndTime(game.startTime);
     drawTime = drawDateTime.toLocaleTimeString("en-US", {
       hour: "numeric",
       minute: "2-digit",
@@ -672,7 +671,7 @@ const getLiveGame = asyncHandler(async (req, res) => {
 
   const game = await Game.findById(liveGame[0].gameId);
   const gameData = game.toObject();
-  gameData.duration = getGameDurationMinutes();
+  Object.assign(gameData, attachGameClock(game));
 
   res.status(200).json(new APIResponse(200, gameData, "Live Game Found"));
 });

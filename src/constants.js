@@ -21,3 +21,34 @@ export function getGameDurationMinutes() {
   }
   return parsed;
 }
+
+export function getGameEndTime(startTime, durationMinutes = getGameDurationMinutes()) {
+  return new Date(new Date(startTime).getTime() + durationMinutes * 60 * 1000);
+}
+
+// Slot boundaries follow the server clock, same grid the cron uses.
+export function getCurrentSlot(now = new Date()) {
+  const duration = getGameDurationMinutes();
+  const startTime = new Date(now);
+  startTime.setSeconds(0, 0);
+  const minutes = startTime.getMinutes();
+  startTime.setMinutes(minutes - (minutes % duration));
+  return {
+    duration,
+    startTime,
+    endTime: getGameEndTime(startTime, duration),
+    serverNow: new Date(now),
+  };
+}
+
+// Live-game responses always carry this clock, ignoring a stale duration stored on the game.
+export function attachGameClock(game, now = new Date()) {
+  const duration = getGameDurationMinutes();
+  const startTime = game?.startTime ? new Date(game.startTime) : null;
+  const endTime = startTime ? getGameEndTime(startTime, duration) : null;
+  return {
+    duration,
+    endTime,
+    serverNow: new Date(now).toISOString(),
+  };
+}

@@ -10,7 +10,7 @@ import { Mongoose } from "mongoose";
 
 import { LiveGame } from "../models/liveGame.mode.js";
 import { Bet } from "../models/bet.model.js";
-import { getGameDurationMinutes } from "../constants.js";
+import { attachGameClock } from "../constants.js";
 
 const generateAccessAndRefreshTokens = async (userId) => {
   try {
@@ -395,7 +395,7 @@ const getLiveGameDistributor = asyncHandler(async (req, res) => {
   let updatedGame = { ...game._doc };
   updatedGame.orderPoints = orderPoints;
   updatedGame.starPoints = starPoints;
-  updatedGame.duration = getGameDurationMinutes();
+  Object.assign(updatedGame, attachGameClock(game));
 
   return res
     .status(200)
