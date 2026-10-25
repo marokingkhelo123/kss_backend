@@ -3,15 +3,16 @@ import { Game } from "../models/game.mode.js";
 import { LiveGame } from "../models/liveGame.mode.js";
 import { findAutomaticWinner } from "./WinningLogic.js";
 import { GamePercentage } from "../models/gamepercentage.model.js";
-import { GAME_DURATION_MINUTES } from "../constants.js";
+import { getGameDurationMinutes } from "../constants.js";
 
 async function createGame() {
   try {
     console.log("Creating New Game");
     const gamepercentage = await GamePercentage.find();
     console.log(gamepercentage);
+    const gameDurationMinutes = getGameDurationMinutes();
     const game = await Game.create({
-      duration: GAME_DURATION_MINUTES,
+      duration: gameDurationMinutes,
       totalBets: [],
       orderPoints: 0,
       totalUsersPlayed: [],
@@ -63,7 +64,7 @@ async function generateWinnerCheck() {
   const now = new Date();
   const minutes = now.getMinutes();
 
-  if (minutes % 2 === 1) {
+  if ((minutes + 1) % getGameDurationMinutes() === 0) {
     // FINDING WINNER
     console.log("GENERATING WINNERS :- ");
     findAutomaticWinner();
@@ -74,11 +75,12 @@ async function syncLiveGameDuration() {
   try {
     const liveGame = await LiveGame.findOne();
     if (liveGame?.gameId) {
+      const gameDurationMinutes = getGameDurationMinutes();
       await Game.findByIdAndUpdate(liveGame.gameId, {
-        duration: GAME_DURATION_MINUTES,
+        duration: gameDurationMinutes,
       });
       console.log(
-        `Synced live game duration to ${GAME_DURATION_MINUTES} minutes`
+        `Synced live game duration to ${gameDurationMinutes} minutes`
       );
     }
   } catch (error) {
@@ -89,7 +91,8 @@ async function syncLiveGameDuration() {
 export async function startCronJobs() {
   await syncLiveGameDuration();
 
-  const createGameJob = "*/2 * * * *";
+  const gameDurationMinutes = getGameDurationMinutes();
+  const createGameJob = `*/${gameDurationMinutes} * * * *`;
   cron.schedule(createGameJob, createGame);
 
   const checkWinnerJob = "50/50 * * * * *";
