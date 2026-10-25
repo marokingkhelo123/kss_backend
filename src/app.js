@@ -15,7 +15,15 @@ app.use(
 );
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN,
+    origin(origin, callback) {
+      const allowed = process.env.CORS_ORIGIN;
+      if (!origin || !allowed || allowed === "*") {
+        callback(null, true);
+        return;
+      }
+      const allowedOrigins = allowed.split(",").map((item) => item.trim());
+      callback(null, allowedOrigins.includes(origin));
+    },
     credentials: true,
   })
 );
